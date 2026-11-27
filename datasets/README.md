@@ -1,49 +1,79 @@
 # datasets
 
-Synthetic datasets that all share one schema and differ only in how that schema
-is used.
+One synthetic database of machinery dealers. Every tenant shares the schema;
+tenants differ in the rule they use to decide each business concept.
 
-## The pieces
+## Where things are
 
-**Schema.** Defined once and shared by every dataset: the same tables, the same
-column names, the same types. Each column carries a description of its nominal
-meaning, the thing it is officially for. That description is what an agent is
-told; it is not a promise about what any tenant actually stores there.
+| Path | What it is |
+| --- | --- |
+| [`design/schema.sql`](design/schema.sql) | The 17 tables, with each column's nominal meaning as a comment. The source of truth for the schema. |
+| [`design/concepts.md`](design/concepts.md) | The 17 concepts, their three rules each (as SQL), and the tenant population. |
+| [`design/generator-spec.md`](design/generator-spec.md) | How the generator is built and how to tell it is right. |
+| [`generator/`](generator/) | The generator package and the `dealer-gen` CLI. Fill rules so far: [`FILL_RULES.md`](generator/FILL_RULES.md). |
+| [`query_engine/`](query_engine/) | DuckDB views over the visible output; what agents query through. |
+| `generated/` | Output. Git-ignored. |
+| [`tests/`](tests/) | Tests for the generator, schema and query engine. |
 
-**Profiles.** A profile is one way of using the schema, modelled on a kind of
-business. It may differ from another profile in:
+## The idea in brief
 
-- which columns are filled, left null, or filled with placeholders
-- which columns are overloaded or repurposed (free text holding structured
-  facts, a status field used as a tag, a date field meaning something else)
-- vocabulary, units, and granularity of values
-- volume, history length, and how consistent the data entry is
+- **Concepts and rules.** For each concept (rental fleet unit, booked sale,
+  sales region, ...) a tenant uses one of three rules: the nominal field, the
+  field plus tenant-specific codes, or a combination across tables. One rule
+  per concept, for every row, location and year.
+- **Truth first.** The generator simulates what really happened, then writes
+  the columns so the tenant's own rule reproduces that truth exactly and the
+  other rules come out wrong by a measured amount.
+- **Seen and held-out tenants.** Seen tenants may be used while building
+  agents. Held-out tenants are only for scoring; don't inspect them.
 
-A profile never adds, removes, or renames a column.
+## Output
 
-**Ground truth.** Each profile also produces what evaluation needs:
+```
+generated/
+  seen/      visible/  hidden/
+  held_out/  visible/  hidden/
+```
 
-- questions with expected answers, computed from the generator's own knowledge
-  of the data
-- a machine-readable record of what each column really means for that tenant
+- `visible/` is one Parquet file per table, all tenants of that split, with
+  `tenant_id`. This is everything an agent may read.
+- `hidden/` holds the ground truth: tenant specs, each tenant's rule per
+  concept as runnable SQL, column usage, per-row truth labels, and questions
+  with answers. Details in
+  [generator-spec.md section 8](design/generator-spec.md#8-output-and-ground-truth).
 
-Ground truth is written separately from the data an agent is given, so an agent
-run can be pointed at the data alone.
+## Generating and checking
 
-**Seen and held-out profiles.** Profiles are split into two groups. Seen
-profiles may be used while building and tuning agents. Held-out profiles are
-only used for scoring, and nobody working on an agent should inspect them.
+```bash
+uv run dealer-gen generate
+```
 
-## Rules for generators
+```bash
+uv run dealer-gen check
+```
 
-- **Deterministic.** Every generator takes a seed, and the same seed and
-  profile give the same data.
-- **Output stays out of git.** Generated data goes to `datasets/generated/`,
-  which is ignored. Commit the code that makes the data, not the data.
-- **Agent-visible and hidden output are separate directories**, so the hidden
-  part can never be handed over by accident.
+`generate` takes `--seed` and `--out`; the same seed gives byte-identical
+output. It runs the acceptance checks afterwards unless given `--no-check`.
 
-## Status
+## Querying
 
-Nothing is generated yet. The domain for the shared schema is still to be
-chosen, so no schema or profile files exist.
+```python
+from query_engine import QueryEngine
+
+with QueryEngine("seen", tenant_id=7) as db:
+    db.list_tables()
+    db.describe("equipment")
+    db.run_sql("SELECT count(*) FROM equipment")
+```
+
+`QueryEngine` is scoped to one tenant, runs only read-only statements, and
+cannot reach `hidden/`. `query_engine.connect()` gives a raw DuckDB connection
+for development, optionally tenant-scoped.
+
+## Rules for the generator
+
+- **Deterministic.** Same master seed, same bytes.
+- **Output stays out of git.** Commit the code that makes the data, not the
+  data.
+- **Visible and hidden output are separate directories**, so the hidden part
+  can never be handed over by accident.
