@@ -1,32 +1,36 @@
 # agents
 
-Agentic products that work over the datasets in [`../datasets/`](../datasets/README.md)
-and are judged on how well they hold up across usage profiles.
+Agents that work over the dealer database in [`../datasets/`](../datasets/README.md)
+and are judged on how well they hold up across tenants.
 
 ## Contract
 
 An agent is given:
 
-- the shared schema, including each column's nominal description
-- the data for one tenant
-- a task or question about that tenant
+- a tenant id, and read-only SQL access to that tenant through
+  [`QueryEngine`](../datasets/README.md#querying)
+- the shared schema, including each column's nominal description (as column
+  comments)
+- a question about that tenant, worded the same for every tenant
 
 An agent is never given:
 
-- the profile that generated the data, or its generation rules
-- the per-tenant record of what each column really means
-- the expected answers
-- anything from a held-out profile during development
+- anything under `datasets/generated/*/hidden/`: the tenant's rules, truth
+  labels, column usage, or expected answers
+- the tenant's archetype or spec
+- anything from a held-out tenant during development
 
 So an agent cannot trust a column name or its description. It has to look at
-the rows, work out how this tenant uses each column, and answer on that basis.
+the rows, work out which rule this tenant uses for each concept the question
+needs, and answer on that basis. Agents are not expected to recover every
+rule.
 
 ## What "generalizes" means here
 
-One agent, unchanged, is run against every profile. It is scored per profile,
-with seen and held-out profiles reported separately. An agent that does well on
-seen profiles and badly on held-out ones has learned the tenants, not the
-problem. No per-profile branches, prompts, or configuration.
+One agent, unchanged, is run against every tenant. It is scored per tenant,
+with seen and held-out tenants reported separately. An agent that does well on
+seen tenants and badly on held-out ones has learned the tenants, not the
+problem. No per-tenant branches, prompts, or configuration.
 
 ## Status
 
