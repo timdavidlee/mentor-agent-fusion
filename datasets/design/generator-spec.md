@@ -150,7 +150,7 @@ writes depends on which rule it uses:
 | --- | --- | --- | --- |
 | Rule 1 | Equals the truth on every row | The tenant's ordinary vocabulary, carrying no signal for this concept | As simulated, including exception events that disagree with the truth |
 | Rule 2 | Right except on the override rows, where it holds its coarse or default value | The tenant's code list marks exactly the override rows | As simulated, including exception events that disagree with the truth |
-| Rule 3 | As described under "Nominal column when ignored" in `concepts.md` | Ordinary vocabulary, no signal | Line up with the truth on every row |
+| Rule 3 | As described under "Nominal column when ignored" in `concepts.md`: neglected, which can mean partly right | Ordinary vocabulary, no signal | Line up with the truth on every row |
 
 The exception events are the ones listed under "Rows where rung 3 is wrong
 elsewhere" in `concepts.md`. They are simulated events a real dealer would
@@ -181,8 +181,15 @@ A rule that must be wrong has to
 - change the answer to that concept's question by at least 5% (for a grouped
   answer, in at least one group).
 
+A neglected nominal field does not have to be wholly wrong. Where leaving it
+empty or constant would push plain rule 1 past the 40% cap, the tenant keeps
+it partly right (some sold units do get marked sold), and the share is set so
+rule 1 lands inside the band. No concept is exempt from the cap.
+
 As each concept is implemented, add its exact fill rules to its section in
-`concepts.md`, so the design file stays the full description.
+`concepts.md`, so the design file stays the full description. Milestone 1's
+are in [`../generator/FILL_RULES.md`](../generator/FILL_RULES.md) and have not
+been merged in yet.
 
 ## 7. Shared columns and compatibility
 
@@ -320,7 +327,33 @@ All must pass for every tenant, in `checks.py` and in the test suite.
 2. **All 17 concepts** for those two tenants, plus the compatibility table.
 3. **Population.** Archetypes, 250 drawn tenants, the seen and held-out split.
 4. **Scale.** Row caps, generation time, and a short usage section for
-   `datasets/README.md`.
+   `datasets/README.md`. Baseline from milestone 1: the per-unit Python loop
+   takes about 25 µs per row, so 25 million rows take about 10 minutes on one
+   core. The agreed plan, in order:
+   1. **Generate tenants in parallel** with a process pool. Each tenant has
+      its own seed, so the output stays deterministic; write each tenant's
+      tables, then concatenate in tenant-id order.
+   2. **Replace the per-unit Python loop with numpy stages.**
+      - Draw each stage's values as arrays.
+      - Expand rentals, quotes, visits and lines with a count, `np.repeat`
+        and a grouped cumulative sum, then mask at fleet end and the as-of
+        date.
+      - Make exception events boolean masks, gated by the rules the tenant
+        uses (section 7, rule 4).
+      - Run trade-ins in waves.
+      - Give each stage its own `SeedSequence` child generator, so tuning one
+        stage does not shift the others' random streams.
+      - Use integer cents and integer day numbers internally; convert to
+        decimals and dates only when writing output.
+   3. **Add Numba only if profiling shows a sequential loop dominating.**
+   4. **Move the acceptance checks into set-based DuckDB SQL** over all
+      tenants at once.
+
+   Guard: check 4 (each tenant's own rule exact on every row) must stay green
+   throughout the rewrite.
+
+   Ruled out for now: Rust (a second toolchain while the design still
+   changes) and PyPy (pyarrow, pandas and DuckDB work poorly on it).
 
 ## Follow-ups outside this spec
 

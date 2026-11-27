@@ -23,7 +23,11 @@ concept:
 For each concept the generator first decides the **hidden truth** for every
 row, then writes the columns so that the tenant's rung reproduces that truth.
 Columns belonging to the other rungs are filled as described under "Nominal
-column when ignored", so applying the wrong rung gives a wrong answer.
+column when ignored", so applying the wrong rung gives a wrong answer. An
+ignored field is neglected, not necessarily empty: at some tenants it is
+partly right, which makes the wrong rule plausible and still wrong. Exact
+shares per tenant are in
+[`../generator/FILL_RULES.md`](../generator/FILL_RULES.md).
 
 **A tenant's rule is consistent.** For each concept a tenant uses exactly one
 rung, with one set of code lists, for every row, every location and its whole
@@ -58,8 +62,10 @@ no tenant condition of their own.
 - **Hidden truth:** every unit belongs to one line: construction, agriculture
   or compact.
 - **Question:** what was equipment sales revenue by product line in 2025?
-- **Nominal column when ignored:** `equipment_model.category` holds the
-  manufacturer's marketing family ("300 Series"), or is null.
+- **Nominal column when ignored:** `equipment_model.category` is only partly
+  right. It holds the true line on most models; on the rest (a quarter of
+  models at example tenant C) it holds the manufacturer's marketing family
+  ("300 Series") or is null.
 - **Rows where rung 3 is wrong elsewhere:** departments are organised by
   function, so one sales department sells every line from every location.
 - **Also depends on:** Booked sale, for which orders count as revenue.
@@ -123,8 +129,10 @@ WHERE e.owner_customer_id IS NULL
 
 - **Hidden truth:** whether a salesperson could sell the unit today.
 - **Question:** how many units are available to sell, by location?
-- **Nominal column when ignored:** `equipment.status` is set at receipt and
-  never updated, so sold and rented units still read `'available'`.
+- **Nominal column when ignored:** `equipment.status` is only partly kept up.
+  It is set to `'available'` at receipt and changed to `'sold'` on most sold
+  units (80% at example tenant A), but never changed for rentals. Units out
+  on rent, and the remaining sold units, still read `'available'`.
 - **Rows where rung 3 is wrong elsewhere:** units at a sales yard held for
   inspection or a verbal deposit with no order yet; units for sale that stand
   at a rental branch or service shop.
@@ -283,8 +291,9 @@ WHERE e.meter_reading > 10
   tenants also keep quotes and abandoned deals in `sales_order`.
 - **Question:** how many equipment sales were booked in 2025, and for how
   much?
-- **Nominal column when ignored:** `sales_order.status` stays `'open'` after
-  the deal is done.
+- **Nominal column when ignored:** `sales_order.status` is only partly kept
+  up. Most booked orders are marked `'closed'` (70% at example tenant A) and
+  the rest stay `'open'`, alongside abandoned orders that also stay `'open'`.
 - **Rows where rung 3 is wrong elsewhere:** deposit invoices on orders that
   were never completed; completed orders whose invoice was entered without a
   link to the order.
